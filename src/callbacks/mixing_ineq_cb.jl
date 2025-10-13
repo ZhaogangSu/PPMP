@@ -1,0 +1,317 @@
+# src/callbacks/mixing_ineq_cb.jl
+
+"""
+Check if a mixing inequality is trivial, i.e.:
+1. Same as original cut (same z coefficients and zero constant term)
+2. Only x variables with zero constant term
+"""
+function is_trivial_mixing_inequality(mixing_coeffs::Vector{Float64}, 
+                                    original_coeffs::Vector{Float64}, 
+                                    constant_q::Float64,
+                                    num_x::Int,
+                                    k::Int)
+    # Check if constant term is effectively zero
+    if abs(constant_q) < 1e-6
+        # Case 1: Same as original cut
+        if abs(mixing_coeffs[num_x + k] - original_coeffs[num_x + k]) < 1e-6 &&
+           all(abs(coeff) < 1e-6 for (i, coeff) in enumerate(mixing_coeffs[(num_x+1):end]) if i != k)
+            return true
+        end
+        
+        # Case 2: Only x variables (all z coefficients are zero)
+        if all(abs(coeff) < 1e-6 for coeff in mixing_coeffs[(num_x+1):end])
+            return true
+        end
+    end
+    
+    return false
+end
+
+"""
+Print mixing inequality in readable format
+"""
+function print_mixing_inequality(num_x::Int, mixing_coeffs::Vector{Float64}, 
+                               constant_q::Float64, k::Int, cut_type::String="")
+    z_terms = String[]
+    for i in (num_x + 1):length(mixing_coeffs)
+        if abs(mixing_coeffs[i]) > 1e-6
+            scenario_idx = i - num_x
+            push!(z_terms, @sprintf("%.2f z_%d", mixing_coeffs[i], scenario_idx))
+        end
+    end
+    z_part = isempty(z_terms) ? "" : " + " * join(z_terms, " + ")
+    
+    # prefix = isempty(cut_type) ? "" : "\nProcessing $cut_type mixing cut for scenario $k:"
+    # if !isempty(prefix)
+    #     println(prefix)
+    # end
+    println("Mixing inequality for scenario $k: x(M,N)$z_part ≥ $constant_q")
+end
+
+"""
+Process mixing cuts for lazy constraints
+"""
+function process_mixing_cuts_lazy!(cb_data, solver::FlowCutSolver, config::PPMPConfig,
+                                 cuts::Vector{Cut}, x_val::Vector{Float64}, z_val::Vector{Float64}, is_root::Bool)
+
+    max_mixing_cuts_per_round = is_root ? config.root_max_lazy_mixing_cuts_per_round : config.tree_max_lazy_mixing_cuts_per_round
+    max_mixing_cuts_submit_per_round = is_root ? config.root_max_lazy_mixing_cuts_submit_per_round : config.tree_max_lazy_mixing_cuts_submit_per_round
+
+    if !config.lazy_mixing_cuts_enabled || isempty(cuts) || (max_mixing_cuts_per_round == 0) || (max_mixing_cuts_submit_per_round == 0)
+        return 0
+    end
+
+    lazy_mixing_cuts_added = 0
+    lazy_mixing_start_time = time()
+    
+    if config.mixing_print_level >= 2
+        println("Processing mixing cut for most violated cut")
+    end
+
+    # Store candidate cuts
+    candidate_cuts = []
+    
+    for cut_idx in 1:min(length(cuts), max_mixing_cuts_per_round)
+        try
+            # Find which scenario this cut is for
+            k = cuts[cut_idx].k_idx
+            
+            # Generate mixing coefficients
+            mixing_coeffs, q_values, constant_q = generate_mixing_coefficients(
+                solver, k, cuts[cut_idx], z_val
+            )
+            
+            # Skip if the mixing inequality is trivial (same as original cut)
+            if is_trivial_mixing_inequality(mixing_coeffs, cuts[cut_idx].coefficients, 
+                                            constant_q, solver.num_x, k)
+                continue
+            end
+
+            # Calculate violation using provided x_val and z_val
+            val_vec = vcat(x_val, z_val)
+            violation = -sum(mixing_coeffs .* val_vec) + constant_q
+            # Calculate norm of coefficients
+            coeff_norm = sqrt(sum(mixing_coeffs.^2))
+
+            # Store cut information
+            push!(candidate_cuts, (
+                k_idx=k,
+                coefficients=mixing_coeffs,
+                constant=constant_q,
+                violation=violation,
+                norm=coeff_norm,
+                normalized_violation=violation/coeff_norm
+            ))
+
+            if config.mixing_print_level >= 1
+                print_mixing_inequality(solver.num_x, mixing_coeffs, constant_q, k, "lazy")
+                println("Violation: ", round(violation, digits=6))
+                println("Normalized violation: ", round(violation/coeff_norm, digits=6))
+            end
+            
+        catch e
+            if config.mixing_print_level >= 1
+                println("Failed to generate lazy mixing cut: ", e)
+                println(stacktrace())
+            end
+            continue
+        end
+    end
+
+    if !isempty(candidate_cuts)
+        # filter out cuts with normalized violation below threshold
+        candidate_cuts = filter(x -> x.violation > config.lazy_mixing_cuts_violation_threshold, candidate_cuts)
+        # Sort candidate cuts by normalized violation
+        sort!(candidate_cuts, by=x -> x.normalized_violation, rev=true)
+        
+        for _ in 1:max_mixing_cuts_submit_per_round
+            
+            if isempty(candidate_cuts)
+                break
+            end
+
+            best_cut = pop!(candidate_cuts)
+            
+            # Add mixing cut with proper RHS
+            vars = vcat(solver.x, solver.z)
+            mixing_con = @build_constraint(
+                sum(best_cut.coefficients[i] * vars[i] for i in 1:length(vars)) >= best_cut.constant
+            ) 
+            MOI.submit(solver.model, MOI.LazyConstraint(cb_data), mixing_con)
+            
+            if config.mixing_print_level >= 1
+                print_mixing_inequality(solver.num_x, best_cut.coefficients, best_cut.constant, best_cut.k_idx, "lazy")
+                println("Violation: ", round(best_cut.violation, digits=6))
+                println("Normalized violation: ", round(best_cut.normalized_violation, digits=6))
+            end
+            
+            if config.mixing_print_level >= 3
+                println("Adding lazy mixing cut:", mixing_con)
+            end
+            
+            # Update statistics
+            lazy_mixing_cuts_added += 1
+            solver.stats.lazy_mixing_cuts_added += 1
+            if is_root
+                solver.stats.root_stats["lazy_mixing_cuts_added"] += 1
+            else
+                solver.stats.tree_stats["lazy_mixing_cuts_added"] += 1
+            end
+            
+        end
+    end
+
+    println("submitted ", lazy_mixing_cuts_added, " lazy mixing cuts. Total: ", solver.stats.root_stats["lazy_mixing_cuts_added"] + solver.stats.tree_stats["lazy_mixing_cuts_added"])
+
+    # Update timing statistics
+    solver.stats.lazy_mixing_cuts_time += time() - lazy_mixing_start_time
+    
+   
+    return lazy_mixing_cuts_added
+end
+
+"""
+Process mixing cuts for uesr cuts
+"""
+function process_mixing_cuts_user!(cb_data, solver::FlowCutSolver, config::PPMPConfig,
+                                 cuts::Vector{Cut}, x_val::Vector{Float64}, z_val::Vector{Float64}, is_root::Bool)
+
+    max_mixing_cuts_per_round = is_root ? config.root_max_user_mixing_cuts_per_round : config.tree_max_user_mixing_cuts_per_round
+
+    max_mixing_cuts_submit_per_round = is_root ? config.root_max_user_mixing_cuts_submit_per_round : config.tree_max_user_mixing_cuts_submit_per_round
+
+    # Track which scenarios have mixing cuts submitted
+    submitted_scenario_indices = Set{Int}()
+
+    if !config.user_mixing_cuts_enabled || isempty(cuts) || (max_mixing_cuts_per_round == 0) || (max_mixing_cuts_submit_per_round == 0)
+        return 0, submitted_scenario_indices
+    end
+    
+
+    user_mixing_cuts_added = 0
+    user_mixing_start_time = time()
+    
+    if config.mixing_print_level >= 2
+        println("Processing user mixing cut for most violated cut")
+    end
+
+    # Store all candidate mixing cuts
+    candidate_cuts = []
+    
+    for cut_idx in 1:min(length(cuts), max_mixing_cuts_per_round)
+        try
+            # Find which scenario this cut is for
+            k = cuts[cut_idx].k_idx
+            
+            # Generate mixing coefficients
+            mixing_coeffs, q_values, constant_q = generate_mixing_coefficients(
+                solver, k, cuts[cut_idx], z_val
+            )
+
+            # Skip if the mixing inequality is trivial (same as original cut)
+            if is_trivial_mixing_inequality(mixing_coeffs, cuts[cut_idx].coefficients, 
+                                            constant_q, solver.num_x, k)
+                continue
+
+                if config.mixing_print_level >= 1
+                    println("Trivial mixing inequality for scenario $k")
+                    # print_mixing_inequality(solver.num_x, mixing_coeffs, constant_q, k, "user")
+                end
+            else 
+                if config.mixing_print_level >= 1
+                    println("Non-trivial mixing inequality for scenario $k")
+                    print_mixing_inequality(solver.num_x, mixing_coeffs, constant_q, k, "user")
+                end
+            end
+            # Calculate violation using provided x_val and z_val
+            val_vec = vcat(x_val, z_val)
+            violation = -sum(mixing_coeffs .* val_vec) + constant_q
+
+            # Calculate norm of coefficients
+            coeff_norm = sqrt(sum(mixing_coeffs.^2))
+            
+            # Store cut information
+            push!(candidate_cuts, (
+                k_idx=k,
+                coefficients=mixing_coeffs,
+                constant=constant_q,
+                violation=violation,
+                norm=coeff_norm,
+                normalized_violation=violation/coeff_norm
+            ))
+            
+            if config.mixing_print_level >= 1
+                print_mixing_inequality(solver.num_x, mixing_coeffs, constant_q, k, "user")
+                println("Violation: ", round(violation, digits=6))
+                println("Normalized violation: ", round(violation/coeff_norm, digits=6))
+            end
+            
+        catch e
+            if config.mixing_print_level >= 1
+                println("Failed to generate user mixing cut: ", e)
+                println(stacktrace())
+            end
+            continue
+        end
+    end
+
+    # Sort candidate cuts by normalized violation
+    if !isempty(candidate_cuts)
+        # candidate_cuts = filter(x -> x.violation > config.user_mixing_cuts_violation_threshold, candidate_cuts)
+
+        # Create mapping of user cut violations for quick lookup
+        user_cut_violations = Dict(cut.k_idx => cut.violation / cut.norm for cut in cuts)
+        
+        # Filter mixing cuts - only keep those with higher normalized violation than original user cut
+        candidate_cuts = filter(x -> x.normalized_violation > user_cut_violations[x.k_idx] * (1 + config.user_mixing_cuts_normed_violation_rel_threshold), candidate_cuts)
+        
+        sort!(candidate_cuts, by=x -> x.normalized_violation, rev=true)
+
+        for _ in 1:max_mixing_cuts_submit_per_round
+            if isempty(candidate_cuts)
+                break
+            end
+
+            best_cut = pop!(candidate_cuts)
+
+            # Add mixing cut with proper RHS
+            vars = vcat(solver.x, solver.z)
+            mixing_con = @build_constraint(
+                sum(best_cut.coefficients[i] * vars[i] for i in 1:length(vars)) >= best_cut.constant
+            )
+
+            MOI.submit(solver.model, MOI.UserCut(cb_data), mixing_con)
+
+            # Track the scenario index
+            push!(submitted_scenario_indices, best_cut.k_idx)
+
+            if config.mixing_print_level >= 1
+                print_mixing_inequality(solver.num_x, best_cut.coefficients, best_cut.constant, best_cut.k_idx, "user")
+                println("Violation: ", round(best_cut.violation, digits=6))
+                println("Normalized violation: ", round(best_cut.normalized_violation, digits=6))
+            end
+
+            if config.mixing_print_level >= 3
+                println("Adding user mixing cut:", mixing_con)
+            end
+
+            # Update statistics
+            user_mixing_cuts_added += 1
+            solver.stats.user_mixing_cuts_added += 1
+
+
+            if is_root
+                solver.stats.root_stats["user_mixing_cuts_added"] += 1
+            else
+                solver.stats.tree_stats["user_mixing_cuts_added"] += 1
+            end
+        end
+    end
+
+    println("submitted ", user_mixing_cuts_added, " user mixing cuts. Total: ", solver.stats.root_stats["user_mixing_cuts_added"] + solver.stats.tree_stats["user_mixing_cuts_added"])
+
+       # Update timing statistics
+    solver.stats.user_mixing_cuts_time += time() - user_mixing_start_time
+   
+    return user_mixing_cuts_added, submitted_scenario_indices
+end

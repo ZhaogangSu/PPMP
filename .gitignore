@@ -1,0 +1,41 @@
+# Julia
+Manifest.toml
+*.jl.*.cov
+*.jl.cov
+*.jl.mem
+/deps/deps.jl
+
+# Precompilation
+*.ji
+lib/
+bin/
+bin*/
+
+# Data
+data/
+
+# Test
+test/
+
+# Results and outputs
+results/
+myout/
+*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Temporary
+tmp/
+temp/
+*.tmp
+myout

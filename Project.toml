@@ -1,0 +1,35 @@
+name = "PPMP"
+uuid = "54f8a416-9a8e-4c6c-96b5-7df72097a374"
+version = "0.1.0"
+authors = "Zhaogang Su, suzhaogang@lsec.cc.ac.cn"
+
+[deps]
+ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
+BipartiteMatching = "79040ab4-24c8-4c92-950c-d48b5991a0f6"
+CPLEX = "a076750e-1247-5638-91d2-ce28b192dca0"
+DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Glob = "c27321d9-0574-5035-807b-f59d2c89b15c"
+Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
+GraphsFlows = "06909019-6f44-4949-96fc-b9d9aaa02889"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
+MKL_jll = "856f044c-d86e-5d09-b602-aeab76dc8ba7"
+MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+MinCostFlows = "62286e6e-1779-56f1-888a-1c0056788ce0"
+PackageCompiler = "9b87118b-4619-50d2-8e1e-99f35a4d4d9d"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SimpleWeightedGraphs = "47aef6b3-ad0c-573a-a1e2-d07658019622"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[compat]
+CPLEX = "1.1.1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
