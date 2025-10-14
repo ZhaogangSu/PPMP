@@ -129,11 +129,12 @@ function generate_mixing_coefficients(solver::FlowCutSolver, k::Int, cut::Cut, z
         available_positions = collect(1:(q_idx-1))  # Only consider positions up to q_idx-1
         selected_positions = Int[]
         
+        # Step 1: Greedy selection - collect positions only
         while !isempty(available_positions)
             # Find index with largest z value among available positions
             max_z_val = -Inf
             max_z_pos = 0
-            # for pos in reverse(available_positions)
+            
             for pos in available_positions
                 if z_val[sorted_k[pos]] > max_z_val
                     max_z_val = z_val[sorted_k[pos]]
@@ -145,27 +146,33 @@ function generate_mixing_coefficients(solver::FlowCutSolver, k::Int, cut::Cut, z
                 break
             end
             
-            # Get the scenario index
-            k_prime = sorted_k[max_z_pos]
-            
-            # Calculate coefficient
-            if isempty(selected_positions)
-                # First selected index: q[k₁] - q[idx]
-                coefficients[solver.num_x + k_prime] = -(sorted_q[max_z_pos] - constant_q)
-            else
-                # Subsequent indices: q[kᵢ] - q[kᵢ₋₁]
-                prev_pos = selected_positions[end]
-                coefficients[solver.num_x + k_prime] = -(sorted_q[max_z_pos] - sorted_q[prev_pos])
-            end
-            
-            # Update tracking arrays
             push!(selected_positions, max_z_pos)
+            
             if solver.config.mixing_print_level >= 1
-                # println("Selected position: ", max_z_pos)
-                println("Selected positions: ", sorted_k[selected_positions])
+                println("Selected position: ", max_z_pos, " (scenario ", sorted_k[max_z_pos], ")")
             end
-            # Only keep positions that come before the current position
-            filter!(p -> p < max_z_pos, available_positions)
+            
+            # Keep only positions AFTER current (maintain increasing order)
+            filter!(p -> p > max_z_pos, available_positions)
+        end
+        
+        # Step 2: Compute coefficients based on final selected positions
+        # Selected positions are already in increasing order due to filter
+        for (idx, pos) in enumerate(selected_positions)
+            k_prime = sorted_k[pos]
+            
+            if idx < length(selected_positions)
+                # Pair with NEXT position
+                next_pos = selected_positions[idx + 1]
+                coefficients[solver.num_x + k_prime] = -(sorted_q[pos] - sorted_q[next_pos])
+            else
+                # Last position pairs with constant
+                coefficients[solver.num_x + k_prime] = -(sorted_q[pos] - constant_q)
+            end
+            
+            if solver.config.mixing_print_level >= 1
+                println("Coefficient for scenario $k_prime: ", coefficients[solver.num_x + k_prime])
+            end
         end
     else
         if solver.config.mixing_print_level >= 1
