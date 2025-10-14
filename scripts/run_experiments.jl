@@ -405,4 +405,11 @@ submit_jobs("pre", instance_pattern, "FCS", epsilon_values, "Pre5_fin_sparse_no_
 submit_jobs("pre", instance_pattern, "FCS", epsilon_values, "Pre5_fin_sparse_pre_2", binary_type, 20, config_default)
 
 
+# Old New Mixing:
+
+# No presolve
+config2 = ["--is-presolve-flowcut", "false"]
+submit_jobs("dev5", ["test*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Mix_FCS_no_presolve_new_ver1", "bin_new", 20, config2)
+submit_jobs("dev5", ["test*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Mix_FCS_no_presolve_old_ver1", "bin_old", 20, config2)
+
 """

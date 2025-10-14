@@ -358,6 +358,14 @@ const DEV5_INSTANCE_SIZES = Dict(
     # n = 20 series
     "test_20_100" => Dict("n" => 20, "scenarios" => 100),
     "test_20_200" => Dict("n" => 20, "scenarios" => 200),
+
+    # n = 100 series
+    "test_100_100" => Dict("n" => 100, "scenarios" => 100),
+    "test_100_200" => Dict("n" => 100, "scenarios" => 200),
+
+    # n = 200 series
+    "test_200_100" => Dict("n" => 200, "scenarios" => 100),
+    "test_200_200" => Dict("n" => 200, "scenarios" => 200),
 )
 
 # Refined density values focusing on high density advantages
