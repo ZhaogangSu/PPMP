@@ -348,6 +348,29 @@ const DEV4_EPSILON_VALUES = [0.0, 0.01, 0.05, 0.1, 0.2]
 # More seeds for better statistical significance
 const DEV4_RANDOM_SEEDS = 1:5
 
+"""Developing Data 5 """
+
+const DEV5_INSTANCE_SIZES = Dict(
+    # n = 10 series
+    "test_10_100" => Dict("n" => 10, "scenarios" => 100),
+    "test_10_200" => Dict("n" => 10, "scenarios" => 200),
+
+    # n = 20 series
+    "test_20_100" => Dict("n" => 20, "scenarios" => 100),
+    "test_20_200" => Dict("n" => 20, "scenarios" => 200),
+)
+
+# Refined density values focusing on high density advantages
+const DEV5_EDGE_DENSITIES = [0.3, 0.5, 0.7]
+
+# More granular failure probabilities in the successful range
+const DEV5_FAILURE_PROBABILITIES = [0.05, 0.1]
+
+# Epsilon values that showed promise
+const DEV5_EPSILON_VALUES = [0.0, 0.01, 0.05, 0.1, 0.2]
+
+# More seeds for better statistical significance
+const DEV5_RANDOM_SEEDS = 1:5
 
 """semi-Uniform Data 2"""
 
@@ -514,6 +537,14 @@ const TESTSET_CONFIGS = Dict{String, NamedTuple{(:dir, :sizes, :densities, :prob
         probs = DEV4_FAILURE_PROBABILITIES,
         eps = DEV4_EPSILON_VALUES,
         seeds = DEV4_RANDOM_SEEDS
+    ),
+    "dev5" => (
+        dir = "data/dev5",
+        sizes = DEV5_INSTANCE_SIZES,
+        densities = DEV5_EDGE_DENSITIES,
+        probs = DEV5_FAILURE_PROBABILITIES,
+        eps = DEV5_EPSILON_VALUES,
+        seeds = DEV5_RANDOM_SEEDS
     ),
     "suni" => (
         dir = "data/suni",
