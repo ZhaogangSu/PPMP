@@ -152,6 +152,9 @@ struct PPMPConfig
     is_presolve_fix_scenario::Bool     # Whether to fix scenario variables in modeling based on presolve info
     is_presolve_original::Bool     # Whether to use presolve
 
+    # Data loading
+    merge_identical_scenarios::Bool  # Whether to merge identical scenarios when loading data
+
     # logging settings
     is_logging_round_info::Bool  # Whether to log round info
 end
@@ -271,6 +274,9 @@ function default_config()
         true,      # is_presolve_flowcut
         true,      # is_presolve_fix_scenario
         false,      # is_presolve_original
+
+        # Data loading
+        true,      # merge_identical_scenarios
 
         # logging settings
         false      # is_logging_round_info
@@ -609,7 +615,12 @@ function parse_commandline()
             help = "Use original presolve"
             arg_type = Bool
             default = default_config().is_presolve_original
-        
+
+        "--merge-identical-scenarios"
+            help = "Merge identical scenarios when loading data (false for Monte Carlo with equal probabilities)"
+            arg_type = Bool
+            default = default_config().merge_identical_scenarios
+
         # logging settings
         "--is-logging-round-info"
             help = "Log round info"
@@ -745,6 +756,9 @@ function config_from_args(parsed_args::Dict{String, Any}, base_config::PPMPConfi
         parsed_args["is-presolve-flowcut"],
         parsed_args["is-presolve-fix-scenario"],
         parsed_args["is-presolve-original"],
+
+        # Data loading
+        parsed_args["merge-identical-scenarios"],
 
         # logging settings
         parsed_args["is-logging-round-info"]

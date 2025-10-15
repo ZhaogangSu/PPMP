@@ -9,7 +9,7 @@ Returns:
 - RawInstanceData: The instance data with merged scenarios
 - Vector{Float64}: The merged scenario probabilities
 """
-function load_instance_from_json(filename::String)
+function load_instance_from_json(filename::String; merge_scenarios::Bool=true)
     data = JSON.parsefile(filename)
     
     # Extract base data
@@ -32,17 +32,22 @@ function load_instance_from_json(filename::String)
     
     # Create equal probabilities initially
     probabilities = fill(1.0/num_scenarios, num_scenarios)
-    
-    merge_start_time = time()
-    # Merge identical scenarios and get group information
-    merged_scenarios, merged_probabilities, scenario_groups = merge_identical_scenarios(failed_edges, probabilities)    # Create merge stats
 
-    merge_time = time() - merge_start_time
-    merge_stats = MergeStats(num_scenarios, merged_scenarios, merged_probabilities, 
-                           scenario_groups, merge_time)
-
-    # Print statistics
-    print_scenario_merge_statistics(merge_stats)
+    if merge_scenarios
+        merge_start_time = time()
+        merged_scenarios, merged_probabilities, scenario_groups = merge_identical_scenarios(failed_edges, probabilities)
+        merge_time = time() - merge_start_time
+        merge_stats = MergeStats(num_scenarios, merged_scenarios, merged_probabilities,
+                               scenario_groups, merge_time)
+        print_scenario_merge_statistics(merge_stats)
+    else
+        merged_scenarios = failed_edges
+        merged_probabilities = probabilities
+        merge_stats = nothing
+        println("\nNo scenario merging (Monte Carlo mode)")
+        println("Number of scenarios: ", num_scenarios)
+        println("Probability per scenario: ", round(1.0/num_scenarios, digits=4))
+    end
 
     return RawInstanceData(n, edges, length(merged_scenarios), merged_scenarios), 
            merged_probabilities,
