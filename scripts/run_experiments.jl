@@ -412,4 +412,11 @@ config2 = ["--is-presolve-flowcut", "false"]
 submit_jobs("dev5", ["test*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Mix_FCS_no_presolve_new_ver1", "bin_new", 20, config2)
 submit_jobs("dev5", ["test*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Mix_FCS_no_presolve_old_ver1", "bin_old", 20, config2)
 
+
+config_no_presolve_mixing = ["--user-mixing-cuts-enabled", "false", "--is-presolve-flowcut", "false", "--max-time", "3600"]
+config_no_presolve = ["--is-presolve-flowcut", "false", "--max-time", "3600"]
+submit_jobs("dev3", ["test_100*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Mix_FCS_new_dev3_ver2", "bin_new", 13, config_no_presolve)
+submit_jobs("dev3", ["test_100*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Mix_FCS_old_dev3_ver2", "bin_old", 13, config_no_presolve)
+submit_jobs("dev3", ["test_100*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Mix_FCS_old_dev3_no_mix_ver2", "bin_old", 13, config_no_presolve_mixing)
+
 """
