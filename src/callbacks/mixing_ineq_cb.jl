@@ -75,40 +75,113 @@ function process_mixing_cuts_lazy!(cb_data, solver::FlowCutSolver, config::PPMPC
         try
             # Find which scenario this cut is for
             k = cuts[cut_idx].k_idx
-            
-            # Generate mixing coefficients
-            mixing_coeffs, q_values, constant_q = generate_mixing_coefficients(
-                solver, k, cuts[cut_idx], z_val
-            )
-            
-            # Skip if the mixing inequality is trivial (same as original cut)
-            if is_trivial_mixing_inequality(mixing_coeffs, cuts[cut_idx].coefficients, 
-                                            constant_q, solver.num_x, k)
-                continue
+
+            # Determine which mixing inequality type to use
+            mixing_type = config.mixing_inequality_type
+
+            # Generate appropriate mixing inequality(ies)
+            candidate_inequalities = []
+
+            # Check if complement mixing can be used (use cached value)
+            can_use_complement = solver.has_equal_probs
+
+            if mixing_type == :basic_star || mixing_type == :both
+                try
+                    mixing_coeffs_basic, q_values_basic, constant_q_basic = generate_mixing_coefficients(
+                        solver, k, cuts[cut_idx], z_val
+                    )
+
+                    # Skip if trivial
+                    if !is_trivial_mixing_inequality(mixing_coeffs_basic, cuts[cut_idx].coefficients,
+                                                     constant_q_basic, solver.num_x, k)
+                        val_vec = vcat(x_val, z_val)
+                        violation_basic = -sum(mixing_coeffs_basic .* val_vec) + constant_q_basic
+                        coeff_norm_basic = sqrt(sum(mixing_coeffs_basic.^2))
+
+                        push!(candidate_inequalities, (
+                            type = :basic_star,
+                            coefficients = mixing_coeffs_basic,
+                            constant = constant_q_basic,
+                            violation = violation_basic,
+                            norm = coeff_norm_basic,
+                            normalized_violation = violation_basic / coeff_norm_basic
+                        ))
+
+                        if config.mixing_print_level >= 1
+                            println("Generated basic star inequality, violation: $(round(violation_basic, digits=6))")
+                        end
+                    end
+                catch e
+                    if config.mixing_print_level >= 1
+                        println("Failed to generate basic star inequality: ", e)
+                    end
+                end
             end
 
-            # Calculate violation using provided x_val and z_val
-            val_vec = vcat(x_val, z_val)
-            violation = -sum(mixing_coeffs .* val_vec) + constant_q
-            # Calculate norm of coefficients
-            coeff_norm = sqrt(sum(mixing_coeffs.^2))
+            if (mixing_type == :complement || mixing_type == :both) && can_use_complement
+                try
+                    mixing_coeffs_comp, q_values_comp, constant_q_comp = generate_complement_mixing_inequality(
+                        solver, k, cuts[cut_idx], z_val
+                    )
 
-            # Store cut information
-            push!(candidate_cuts, (
-                k_idx=k,
-                coefficients=mixing_coeffs,
-                constant=constant_q,
-                violation=violation,
-                norm=coeff_norm,
-                normalized_violation=violation/coeff_norm
-            ))
+                    # Skip if trivial
+                    if !is_trivial_mixing_inequality(mixing_coeffs_comp, cuts[cut_idx].coefficients,
+                                                     constant_q_comp, solver.num_x, k)
+                        val_vec = vcat(x_val, z_val)
+                        violation_comp = -sum(mixing_coeffs_comp .* val_vec) + constant_q_comp
+                        coeff_norm_comp = sqrt(sum(mixing_coeffs_comp.^2))
 
-            if config.mixing_print_level >= 1
-                print_mixing_inequality(solver.num_x, mixing_coeffs, constant_q, k, "lazy")
-                println("Violation: ", round(violation, digits=6))
-                println("Normalized violation: ", round(violation/coeff_norm, digits=6))
+                        push!(candidate_inequalities, (
+                            type = :complement,
+                            coefficients = mixing_coeffs_comp,
+                            constant = constant_q_comp,
+                            violation = violation_comp,
+                            norm = coeff_norm_comp,
+                            normalized_violation = violation_comp / coeff_norm_comp
+                        ))
+
+                        if config.mixing_print_level >= 1
+                            println("Generated complement inequality, violation: $(round(violation_comp, digits=6))")
+                        end
+                    end
+                catch e
+                    if config.mixing_print_level >= 1
+                        println("Failed to generate complement inequality: ", e)
+                    end
+                end
+            elseif mixing_type == :complement && !can_use_complement
+                if config.mixing_print_level >= 1
+                    println("Complement mixing requested but probabilities not equal - skipping")
+                end
             end
-            
+
+            # Select best inequality based on violation
+            if !isempty(candidate_inequalities)
+                # Sort by normalized violation
+                sort!(candidate_inequalities, by=x -> x.normalized_violation, rev=true)
+
+                # Take the best one
+                best_inequality = candidate_inequalities[1]
+
+                # Store cut information
+                push!(candidate_cuts, (
+                    k_idx=k,
+                    type=best_inequality.type,
+                    coefficients=best_inequality.coefficients,
+                    constant=best_inequality.constant,
+                    violation=best_inequality.violation,
+                    norm=best_inequality.norm,
+                    normalized_violation=best_inequality.normalized_violation
+                ))
+
+                if config.mixing_print_level >= 1
+                    println("Selected $(best_inequality.type) inequality (best violation)")
+                    print_mixing_inequality(solver.num_x, best_inequality.coefficients, best_inequality.constant, k, "lazy")
+                    println("Violation: ", round(best_inequality.violation, digits=6))
+                    println("Normalized violation: ", round(best_inequality.normalized_violation, digits=6))
+                end
+            end
+
         catch e
             if config.mixing_print_level >= 1
                 println("Failed to generate lazy mixing cut: ", e)
@@ -202,50 +275,114 @@ function process_mixing_cuts_user!(cb_data, solver::FlowCutSolver, config::PPMPC
         try
             # Find which scenario this cut is for
             k = cuts[cut_idx].k_idx
-            
-            # Generate mixing coefficients
-            mixing_coeffs, q_values, constant_q = generate_mixing_coefficients(
-                solver, k, cuts[cut_idx], z_val
-            )
 
-            # Skip if the mixing inequality is trivial (same as original cut)
-            if is_trivial_mixing_inequality(mixing_coeffs, cuts[cut_idx].coefficients, 
-                                            constant_q, solver.num_x, k)
-                continue
+            # Determine which mixing inequality type to use
+            mixing_type = config.mixing_inequality_type
 
-                if config.mixing_print_level >= 1
-                    println("Trivial mixing inequality for scenario $k")
-                    # print_mixing_inequality(solver.num_x, mixing_coeffs, constant_q, k, "user")
+            # Generate appropriate mixing inequality(ies)
+            candidate_inequalities = []
+
+            # Check if complement mixing can be used (use cached value)
+            can_use_complement = solver.has_equal_probs
+
+            if mixing_type == :basic_star || mixing_type == :both
+                try
+                    mixing_coeffs_basic, q_values_basic, constant_q_basic = generate_mixing_coefficients(
+                        solver, k, cuts[cut_idx], z_val
+                    )
+
+                    # Skip if trivial
+                    if !is_trivial_mixing_inequality(mixing_coeffs_basic, cuts[cut_idx].coefficients,
+                                                     constant_q_basic, solver.num_x, k)
+                        val_vec = vcat(x_val, z_val)
+                        violation_basic = -sum(mixing_coeffs_basic .* val_vec) + constant_q_basic
+                        coeff_norm_basic = sqrt(sum(mixing_coeffs_basic.^2))
+
+                        push!(candidate_inequalities, (
+                            type = :basic_star,
+                            coefficients = mixing_coeffs_basic,
+                            constant = constant_q_basic,
+                            violation = violation_basic,
+                            norm = coeff_norm_basic,
+                            normalized_violation = violation_basic / coeff_norm_basic
+                        ))
+
+                        if config.mixing_print_level >= 1
+                            println("Generated basic star inequality, violation: $(round(violation_basic, digits=6))")
+                        end
+                    end
+                catch e
+                    if config.mixing_print_level >= 1
+                        println("Failed to generate basic star inequality: ", e)
+                    end
                 end
-            else 
+            end
+
+            if (mixing_type == :complement || mixing_type == :both) && can_use_complement
+                try
+                    mixing_coeffs_comp, q_values_comp, constant_q_comp = generate_complement_mixing_inequality(
+                        solver, k, cuts[cut_idx], z_val
+                    )
+
+                    # Skip if trivial
+                    if !is_trivial_mixing_inequality(mixing_coeffs_comp, cuts[cut_idx].coefficients,
+                                                     constant_q_comp, solver.num_x, k)
+                        val_vec = vcat(x_val, z_val)
+                        violation_comp = -sum(mixing_coeffs_comp .* val_vec) + constant_q_comp
+                        coeff_norm_comp = sqrt(sum(mixing_coeffs_comp.^2))
+
+                        push!(candidate_inequalities, (
+                            type = :complement,
+                            coefficients = mixing_coeffs_comp,
+                            constant = constant_q_comp,
+                            violation = violation_comp,
+                            norm = coeff_norm_comp,
+                            normalized_violation = violation_comp / coeff_norm_comp
+                        ))
+
+                        if config.mixing_print_level >= 1
+                            println("Generated complement inequality, violation: $(round(violation_comp, digits=6))")
+                        end
+                    end
+                catch e
+                    if config.mixing_print_level >= 1
+                        println("Failed to generate complement inequality: ", e)
+                    end
+                end
+            elseif mixing_type == :complement && !can_use_complement
                 if config.mixing_print_level >= 1
+                    println("Complement mixing requested but probabilities not equal - skipping")
+                end
+            end
+
+            # Select best inequality based on violation
+            if !isempty(candidate_inequalities)
+                # Sort by normalized violation
+                sort!(candidate_inequalities, by=x -> x.normalized_violation, rev=true)
+
+                # Take the best one
+                best_inequality = candidate_inequalities[1]
+
+                # Store cut information
+                push!(candidate_cuts, (
+                    k_idx=k,
+                    type=best_inequality.type,
+                    coefficients=best_inequality.coefficients,
+                    constant=best_inequality.constant,
+                    violation=best_inequality.violation,
+                    norm=best_inequality.norm,
+                    normalized_violation=best_inequality.normalized_violation
+                ))
+
+                if config.mixing_print_level >= 1
+                    println("Selected $(best_inequality.type) inequality (best violation)")
                     println("Non-trivial mixing inequality for scenario $k")
-                    print_mixing_inequality(solver.num_x, mixing_coeffs, constant_q, k, "user")
+                    print_mixing_inequality(solver.num_x, best_inequality.coefficients, best_inequality.constant, k, "user")
+                    println("Violation: ", round(best_inequality.violation, digits=6))
+                    println("Normalized violation: ", round(best_inequality.normalized_violation, digits=6))
                 end
             end
-            # Calculate violation using provided x_val and z_val
-            val_vec = vcat(x_val, z_val)
-            violation = -sum(mixing_coeffs .* val_vec) + constant_q
 
-            # Calculate norm of coefficients
-            coeff_norm = sqrt(sum(mixing_coeffs.^2))
-            
-            # Store cut information
-            push!(candidate_cuts, (
-                k_idx=k,
-                coefficients=mixing_coeffs,
-                constant=constant_q,
-                violation=violation,
-                norm=coeff_norm,
-                normalized_violation=violation/coeff_norm
-            ))
-            
-            if config.mixing_print_level >= 1
-                print_mixing_inequality(solver.num_x, mixing_coeffs, constant_q, k, "user")
-                println("Violation: ", round(violation, digits=6))
-                println("Normalized violation: ", round(violation/coeff_norm, digits=6))
-            end
-            
         catch e
             if config.mixing_print_level >= 1
                 println("Failed to generate user mixing cut: ", e)
