@@ -40,6 +40,9 @@ struct FlowCutSolver <: PPMPSolver
     node_limit::Int         # Node limit for current solve
     time_limit::Float64         # Time limit for current solve
     presolve_info::Union{Nothing,PresolveInfo}  # Presolve information
+
+    # Cached result: true if all scenario probabilities are equal
+    has_equal_probs::Bool
 end
 
 """
@@ -218,16 +221,28 @@ function FlowCutSolver(instance::PPMPInstance;
     end    
 
     setup_time = time() - start_time
+
+    # Check once if probabilities are equal (for complement mixing inequalities)
+    has_equal_probs = has_equal_probabilities(instance.probabilities)
+
+    # Log this information
+    if config.mixing_print_level >= 1
+        println("Probability distribution: ",
+                has_equal_probs ? "EQUAL (complement mixing available)" :
+                                 "NON-EQUAL (complement mixing disabled)")
+    end
+
     @info "Creating FlowCutSolver object..."
-    return FlowCutSolver(model, instance, x, z, length(instance.edges), 
+    return FlowCutSolver(model, instance, x, z, length(instance.edges),
                         length(instance.scenarios), setup_time, networks, cost_networks, config,
                         cutpool,
                         CallbackStats(),
                         restart_flag,
-                        incumbent_sol, 
-                        # best_primal_bound, 
+                        incumbent_sol,
+                        # best_primal_bound,
                         stored_lazy_cons, stored_user_cuts, solve_rounds, gap, node_limit, time_limit,
-                        presolve_info)  # Add presolve_info to the struct
+                        presolve_info,  # Add presolve_info to the struct
+                        has_equal_probs)  # Add has_equal_probs to the struct
 end
 
 

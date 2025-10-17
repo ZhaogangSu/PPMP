@@ -358,14 +358,6 @@ const DEV5_INSTANCE_SIZES = Dict(
     # n = 20 series
     "test_20_100" => Dict("n" => 20, "scenarios" => 100),
     "test_20_200" => Dict("n" => 20, "scenarios" => 200),
-
-    # n = 100 series
-    "test_100_100" => Dict("n" => 100, "scenarios" => 100),
-    "test_100_200" => Dict("n" => 100, "scenarios" => 200),
-
-    # n = 200 series
-    "test_200_100" => Dict("n" => 200, "scenarios" => 100),
-    "test_200_200" => Dict("n" => 200, "scenarios" => 200),
 )
 
 # Refined density values focusing on high density advantages
@@ -379,6 +371,17 @@ const DEV5_EPSILON_VALUES = [0.0, 0.01, 0.05, 0.1, 0.2]
 
 # More seeds for better statistical significance
 const DEV5_RANDOM_SEEDS = 1:5
+
+"""Developing Data 6 """
+
+const DEV6_INSTANCE_SIZES = Dict(
+    "test_100_200" => Dict("n" => 100, "scenarios" => 200),
+)
+
+const DEV6_EDGE_DENSITIES = [0.5]
+const DEV6_FAILURE_PROBABILITIES = [0.005, 0.01]
+const DEV6_EPSILON_VALUES = [0.0, 0.01, 0.05, 0.1, 0.2]
+const DEV6_RANDOM_SEEDS = 1:5
 
 """semi-Uniform Data 2"""
 
@@ -553,6 +556,14 @@ const TESTSET_CONFIGS = Dict{String, NamedTuple{(:dir, :sizes, :densities, :prob
         probs = DEV5_FAILURE_PROBABILITIES,
         eps = DEV5_EPSILON_VALUES,
         seeds = DEV5_RANDOM_SEEDS
+    ),
+    "dev6" => (
+        dir = "data/dev6",
+        sizes = DEV6_INSTANCE_SIZES,
+        densities = DEV6_EDGE_DENSITIES,
+        probs = DEV6_FAILURE_PROBABILITIES,
+        eps = DEV6_EPSILON_VALUES,
+        seeds = DEV6_RANDOM_SEEDS
     ),
     "suni" => (
         dir = "data/suni",

@@ -242,7 +242,7 @@ function run_instance(solver_type::Type{<:PPMPSolver},
     try
         # Load instance
         @info "Loading instance from $instance_path"
-        raw_data, probs, merge_stats = load_instance_from_json(instance_path)
+        raw_data, probs, merge_stats = load_instance_from_json(instance_path, merge_scenarios=config.merge_identical_scenarios)
         
         # Create PPMP instance
         costs = ones(length(raw_data.edges))

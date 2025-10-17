@@ -405,18 +405,34 @@ submit_jobs("pre", instance_pattern, "FCS", epsilon_values, "Pre5_fin_sparse_no_
 submit_jobs("pre", instance_pattern, "FCS", epsilon_values, "Pre5_fin_sparse_pre_2", binary_type, 20, config_default)
 
 
-# Old New Mixing:
+# Mixing test
 
-# No presolve
-config2 = ["--is-presolve-flowcut", "false"]
-submit_jobs("dev5", ["test*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Mix_FCS_no_presolve_new_ver1", "bin_new", 20, config2)
-submit_jobs("dev5", ["test*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Mix_FCS_no_presolve_old_ver1", "bin_old", 20, config2)
+using PPMP
+include("scripts/run_experiments.jl")
 
+# Configuration: No presolve, No merge, max time
+config_base = ["--is-presolve-flowcut", "false", 
+               "--merge-identical-scenarios", "false",
+               "--max-time", "3600"]
 
-config_no_presolve_mixing = ["--user-mixing-cuts-enabled", "false", "--is-presolve-flowcut", "false", "--max-time", "3600"]
-config_no_presolve = ["--is-presolve-flowcut", "false", "--max-time", "3600"]
-submit_jobs("dev3", ["test_100*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Mix_FCS_new_dev3_ver2", "bin_new", 13, config_no_presolve)
-submit_jobs("dev3", ["test_100*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Mix_FCS_old_dev3_ver2", "bin_old", 13, config_no_presolve)
-submit_jobs("dev3", ["test_100*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Mix_FCS_old_dev3_no_mix_ver2", "bin_old", 13, config_no_presolve_mixing)
+# Test 0: No mixing (baseline)
+config_no_mixing = vcat(config_base, ["--user-mixing-cuts-enabled", "false"])
+submit_jobs("dev6", ["test*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], 
+           "Mix_FCS_no_mixing_dev6", "bin_new2", 1, config_no_mixing)
+
+# Test 1: Basic Star mixing
+config_basic_star = vcat(config_base, ["--mixing-inequality-type", "basic_star"])
+submit_jobs("dev6", ["test*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], 
+           "Mix_FCS_basic_star_dev6", "bin_new2", 1, config_basic_star)
+
+# Test 2: Complement mixing
+config_complement = vcat(config_base, ["--mixing-inequality-type", "complement"])
+submit_jobs("dev6", ["test*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], 
+           "Mix_FCS_complement_dev6", "bin_new2", 1, config_complement)
+
+# Test 3: Both mixing types
+config_both = vcat(config_base, ["--mixing-inequality-type", "both"])
+submit_jobs("dev6", ["test*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], 
+           "Mix_FCS_both_dev6", "bin_new2", 1, config_both)
 
 """

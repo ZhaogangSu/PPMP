@@ -98,6 +98,7 @@ struct PPMPConfig
     tree_user_frequency::Int             # Generate user cuts every N nodes
 
     # Mixing cuts parameters
+    mixing_inequality_type::Symbol                # Type of mixing inequalities: :basic_star, :complement, :both
     lazy_mixing_cuts_enabled::Bool           # Whether to use lazy_mixing inequalities
     lazy_mixing_cuts_violation_threshold::Float64  # Minimum violation for submitting lazy mixing cuts
     root_max_lazy_mixing_cuts_per_round::Int      # Maximum number of lazy mixing cuts to compute at root node per callback
@@ -150,6 +151,9 @@ struct PPMPConfig
     is_presolve_flowcut::Bool     # Whether to use presolve
     is_presolve_fix_scenario::Bool     # Whether to fix scenario variables in modeling based on presolve info
     is_presolve_original::Bool     # Whether to use presolve
+
+    # Data loading
+    merge_identical_scenarios::Bool  # Whether to merge identical scenarios when loading data
 
     # logging settings
     is_logging_round_info::Bool  # Whether to log round info
@@ -214,13 +218,14 @@ function default_config()
         2,          # tree_user_frequency
 
         # Mixing cuts
+        :basic_star,  # mixing_inequality_type
         false,   # lazy_mixing_cuts_enabled
         1e-3,    # lazy_mixing_cuts_violation_threshold
         1,      # root_max_lazy_mixing_cuts_per_round
         1,      # root_max_lazy_mixing_cuts_submit_per_round
         0,      # tree_max_lazy_mixing_cuts_per_round
         0,      # tree_max_lazy_mixing_cuts_submit_per_round
-         
+
         true,   # user_cuts_enabled
         true,   # user_mixing_cuts_enabled
         1e-3,    # user_mixing_cuts_violation_threshold
@@ -269,6 +274,9 @@ function default_config()
         true,      # is_presolve_flowcut
         true,      # is_presolve_fix_scenario
         false,      # is_presolve_original
+
+        # Data loading
+        true,      # merge_identical_scenarios
 
         # logging settings
         false      # is_logging_round_info
@@ -448,6 +456,10 @@ function parse_commandline()
             default = default_config().tree_user_frequency
         
         # Mixing cuts settings
+        "--mixing-inequality-type"
+            help = "Type of mixing inequalities to use: basic_star, complement, or both"
+            arg_type = Symbol
+            default = default_config().mixing_inequality_type
         "--lazy-mixing-cuts-enabled"
             help = "Enable mixing cuts"
             arg_type = Bool
@@ -603,7 +615,12 @@ function parse_commandline()
             help = "Use original presolve"
             arg_type = Bool
             default = default_config().is_presolve_original
-        
+
+        "--merge-identical-scenarios"
+            help = "Merge identical scenarios when loading data (false for Monte Carlo with equal probabilities)"
+            arg_type = Bool
+            default = default_config().merge_identical_scenarios
+
         # logging settings
         "--is-logging-round-info"
             help = "Log round info"
@@ -687,6 +704,7 @@ function config_from_args(parsed_args::Dict{String, Any}, base_config::PPMPConfi
         parsed_args["tree-cut-freq"],
 
         # Mixing cuts
+        parsed_args["mixing-inequality-type"],
         parsed_args["lazy-mixing-cuts-enabled"],
         parsed_args["lazy-mixing-cuts-violation-threshold"],
         parsed_args["root-max-lazy-mixing-cuts-per-round"],
@@ -738,6 +756,9 @@ function config_from_args(parsed_args::Dict{String, Any}, base_config::PPMPConfi
         parsed_args["is-presolve-flowcut"],
         parsed_args["is-presolve-fix-scenario"],
         parsed_args["is-presolve-original"],
+
+        # Data loading
+        parsed_args["merge-identical-scenarios"],
 
         # logging settings
         parsed_args["is-logging-round-info"]
