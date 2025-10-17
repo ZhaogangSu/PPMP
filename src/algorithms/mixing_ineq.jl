@@ -639,3 +639,332 @@ end
 
 #     return coefficients, sorted_q, constant_q
 # end
+
+"""
+Generate IMPROVED mixing inequality coefficients using corrected marginal gain separation.
+
+Key difference from generate_mixing_coefficients (basic_star):
+- Selects scenarios by MARGINAL GAIN: (q_pos - constant_q) × (ẑ_pos - ẑ_baseline)
+- NOT by maximum z value
+- Implements Günlük [2001] separation algorithm correctly
+
+This is the CORRECTED version that maximizes violation contribution.
+"""
+function generate_improved_mixing_coefficients(
+    solver::FlowCutSolver,
+    k::Int,
+    cut::Cut,
+    z_val::Vector{Float64}
+)
+    # Skip if k is subfixed
+    if solver.presolve_info !== nothing && k in solver.presolve_info.subfixed_scenarios
+        throw(ErrorException("Cannot generate mixing cuts for subfixed scenario $k"))
+    end
+
+    # Get active scenarios
+    active_scenarios = if solver.presolve_info !== nothing
+        setdiff(1:solver.num_z, solver.presolve_info.subfixed_scenarios)
+    else
+        1:solver.num_z
+    end
+
+    probabilities = solver.instance.probabilities[active_scenarios]
+
+    # Compute q values for ALL scenarios (same as basic_star)
+    q_values = Float64[]
+    k_indices = Int[]
+
+    for k_prime in active_scenarios
+        try
+            q = compute_q_kk_prime_MN(solver, k, k_prime, cut)
+            push!(q_values, q)
+            push!(k_indices, k_prime)
+        catch e
+            if solver.config.callback_print_level >= 2
+                println("Error computing q value for scenarios $k, $k_prime: ", e)
+            end
+            continue
+        end
+    end
+
+    if isempty(q_values)
+        throw(ErrorException("No feasible q values found for mixing"))
+    end
+
+    # Sort scenarios by DECREASING q values
+    sorted_pairs = sort(collect(zip(q_values, k_indices, probabilities)), rev=true)
+    sorted_q = [p[1] for p in sorted_pairs]
+    sorted_k = [p[2] for p in sorted_pairs]
+    sorted_p = [p[3] for p in sorted_pairs]
+
+    # Find threshold q_idx
+    epsilon = solver.presolve_info !== nothing ?
+              solver.presolve_info.new_epsilon :
+              solver.instance.epsilon
+
+    cumulative_prob = 0.0
+    q_idx = length(sorted_q)
+    for i in reverse(1:length(sorted_q))
+        cumulative_prob += sorted_p[i]
+        if cumulative_prob >= 1 - epsilon - 1e-7
+            q_idx = i
+            break
+        end
+    end
+
+    constant_q = sorted_q[q_idx]
+
+    # Initialize coefficients
+    coefficients = zeros(length(cut.coefficients))
+    coefficients[1:solver.num_x] = cut.coefficients[1:solver.num_x]
+
+    # IMPROVED GREEDY SELECTION BY MARGINAL GAIN
+    if q_idx > 1
+        available_positions = collect(1:(q_idx-1))
+        selected_positions = Int[]
+        baseline_z = 0.0
+
+        while !isempty(available_positions)
+            # Find position with MAXIMUM MARGINAL GAIN
+            max_gain = -Inf
+            max_gain_pos = 0
+
+            for pos in available_positions
+                marginal_gain = (sorted_q[pos] - constant_q) * (z_val[sorted_k[pos]] - baseline_z)
+                if marginal_gain > max_gain
+                    max_gain = marginal_gain
+                    max_gain_pos = pos
+                end
+            end
+
+            # Stop if no positive gain
+            if max_gain_pos == 0 || max_gain <= 1e-10
+                break
+            end
+
+            push!(selected_positions, max_gain_pos)
+            baseline_z = z_val[sorted_k[max_gain_pos]]
+
+            if solver.config.mixing_print_level >= 1
+                println("Improved: Selected pos $max_gain_pos (scenario $(sorted_k[max_gain_pos])), marginal gain = $(round(max_gain, digits=4))")
+            end
+
+            # Keep only positions AFTER current
+            filter!(p -> p > max_gain_pos, available_positions)
+        end
+
+        # Build coefficients
+        for (idx, pos) in enumerate(selected_positions)
+            k_prime = sorted_k[pos]
+
+            if idx < length(selected_positions)
+                next_pos = selected_positions[idx + 1]
+                coefficients[solver.num_x + k_prime] = -(sorted_q[pos] - sorted_q[next_pos])
+            else
+                coefficients[solver.num_x + k_prime] = -(sorted_q[pos] - constant_q)
+            end
+        end
+    end
+
+    return coefficients, sorted_q, constant_q
+end
+
+"""
+Generate IMPROVED COMPLEMENT mixing inequality coefficients.
+
+Combines two improvements:
+1. T set selection: Uses MARGINAL GAIN (corrected from max z)
+2. Q set with Delta terms: Same as complement (requires equal probabilities)
+
+This is the corrected version of generate_complement_mixing_inequality.
+
+Key differences from generate_complement_mixing_inequality:
+- T set selection uses marginal gain instead of max z
+- Q set selection remains the same (max z)
+- Delta computation remains the same
+- Still requires equal probabilities
+"""
+function generate_improved_complement_mixing_coefficients(
+    solver::FlowCutSolver,
+    k::Int,
+    cut::Cut,
+    z_val::Vector{Float64}
+)
+    # Skip if k is subfixed
+    if solver.presolve_info !== nothing && k in solver.presolve_info.subfixed_scenarios
+        throw(ErrorException("Cannot generate mixing cuts for subfixed scenario $k"))
+    end
+
+    # Get active scenarios
+    active_scenarios = if solver.presolve_info !== nothing
+        setdiff(1:solver.num_z, solver.presolve_info.subfixed_scenarios)
+    else
+        1:solver.num_z
+    end
+
+    probabilities = solver.instance.probabilities[active_scenarios]
+
+    # Check if probabilities are equal - REQUIRED
+    if !has_equal_probabilities(probabilities)
+        throw(ErrorException("Improved complement mixing requires equal probabilities."))
+    end
+
+    # Compute q values for ALL scenarios
+    q_values = Float64[]
+    k_indices = Int[]
+
+    for k_prime in active_scenarios
+        try
+            q = compute_q_kk_prime_MN(solver, k, k_prime, cut)
+            push!(q_values, q)
+            push!(k_indices, k_prime)
+        catch e
+            if solver.config.callback_print_level >= 2
+                println("Error computing q value for scenarios $k, $k_prime: ", e)
+            end
+            continue
+        end
+    end
+
+    if isempty(q_values)
+        throw(ErrorException("No feasible q values found for mixing"))
+    end
+
+    # Sort by DECREASING q values
+    sorted_pairs = sort(collect(zip(q_values, k_indices, probabilities)), rev=true)
+    sorted_q = [p[1] for p in sorted_pairs]
+    sorted_k = [p[2] for p in sorted_pairs]
+    sorted_p = [p[3] for p in sorted_pairs]
+
+    # Find threshold p
+    epsilon = solver.presolve_info !== nothing ?
+              solver.presolve_info.new_epsilon :
+              solver.instance.epsilon
+
+    cumulative_prob = 0.0
+    q_idx = length(sorted_q)
+    for i in reverse(1:length(sorted_q))
+        cumulative_prob += sorted_p[i]
+        if cumulative_prob >= 1 - epsilon - 1e-7
+            q_idx = i
+            break
+        end
+    end
+
+    p = q_idx - 1
+    m = max(1, p - 1)
+
+    if solver.config.mixing_print_level >= 1
+        println("\n=== Improved Complement Mixing Inequality ===")
+        println("p (threshold): $p, q_idx: $q_idx, m: $m")
+    end
+
+    # Initialize coefficients
+    coefficients = zeros(length(cut.coefficients))
+    coefficients[1:solver.num_x] = cut.coefficients[1:solver.num_x]
+
+    # STEP 1: Select T ⊆ {1, ..., m} using MARGINAL GAIN (IMPROVED)
+    available_T = collect(1:m)
+    selected_T = Int[]
+    baseline_z = 0.0
+
+    while !isempty(available_T)
+        max_gain = -Inf
+        max_gain_pos = 0
+
+        for pos in available_T
+            # Marginal gain: (q_pos - q_{m+1}) × (z_pos - baseline_z)
+            marginal_gain = (sorted_q[pos] - sorted_q[m+1]) * (z_val[sorted_k[pos]] - baseline_z)
+            if marginal_gain > max_gain
+                max_gain = marginal_gain
+                max_gain_pos = pos
+            end
+        end
+
+        if max_gain_pos == 0 || max_gain <= 1e-10
+            break
+        end
+
+        push!(selected_T, max_gain_pos)
+        baseline_z = z_val[sorted_k[max_gain_pos]]
+
+        if solver.config.mixing_print_level >= 2
+            println("Improved T: Selected pos $max_gain_pos (scenario $(sorted_k[max_gain_pos])), gain=$(round(max_gain, digits=4))")
+        end
+
+        filter!(p -> p > max_gain_pos, available_T)
+    end
+
+    # STEP 2: Add coefficients for T set
+    for (idx, pos) in enumerate(selected_T)
+        k_prime = sorted_k[pos]
+
+        if idx < length(selected_T)
+            next_pos = selected_T[idx + 1]
+            coefficients[solver.num_x + k_prime] = -(sorted_q[pos] - sorted_q[next_pos])
+        else
+            coefficients[solver.num_x + k_prime] = -(sorted_q[pos] - sorted_q[m+1])
+        end
+    end
+
+    # STEP 3: Select Q ⊆ {p+1, ..., n} using max z (same as complement)
+    max_complement_count = p - m
+    available_Q = collect(q_idx:length(sorted_q))
+    selected_Q = Int[]
+
+    while !isempty(available_Q) && length(selected_Q) < max_complement_count
+        max_z_val = -Inf
+        max_z_pos = 0
+
+        for pos in available_Q
+            if z_val[sorted_k[pos]] > max_z_val
+                max_z_val = z_val[sorted_k[pos]]
+                max_z_pos = pos
+            end
+        end
+
+        if max_z_pos == 0
+            break
+        end
+
+        push!(selected_Q, max_z_pos)
+        filter!(p -> p != max_z_pos, available_Q)
+
+        if solver.config.mixing_print_level >= 2
+            println("Q: Selected pos $max_z_pos (scenario $(sorted_k[max_z_pos])), z=$(round(max_z_val, digits=4))")
+        end
+    end
+
+    # STEP 4: Compute Delta coefficients and add complement terms (same as complement)
+    constant_q = sorted_q[m+1]
+
+    if !isempty(selected_Q)
+        try
+            deltas = compute_delta_coefficients(sorted_q, m, length(selected_Q))
+
+            for (idx, q_pos) in enumerate(selected_Q)
+                k_prime = sorted_k[q_pos]
+                coefficients[solver.num_x + k_prime] = -deltas[idx]
+            end
+
+            delta_sum = sum(deltas)
+            constant_q -= delta_sum
+
+            if solver.config.mixing_print_level >= 1
+                println("Added $(length(selected_Q)) complement variables")
+                println("Delta values: ", round.(deltas, digits=4))
+            end
+        catch e
+            if solver.config.mixing_print_level >= 1
+                println("Warning: Failed to compute Delta coefficients: ", e)
+            end
+        end
+    end
+
+    if solver.config.mixing_print_level >= 1
+        println("Final: |T|=$(length(selected_T)), |Q|=$(length(selected_Q)), constant=$constant_q")
+        println("==============================================\n")
+    end
+
+    return coefficients, sorted_q, constant_q
+end

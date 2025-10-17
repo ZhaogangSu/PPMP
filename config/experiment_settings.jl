@@ -98,7 +98,11 @@ struct PPMPConfig
     tree_user_frequency::Int             # Generate user cuts every N nodes
 
     # Mixing cuts parameters
-    mixing_inequality_type::Symbol                # Type of mixing inequalities: :basic_star, :complement, :both
+    # Mixing inequality type controls (each can be enabled/disabled independently)
+    mixing_basic_star_enabled::Bool       # Original: greedy by max z
+    mixing_complement_enabled::Bool       # Original complement: greedy by max z + Delta terms (requires equal probs)
+    mixing_improved_enabled::Bool         # Corrected: greedy by marginal gain
+    mixing_improved_complement_enabled::Bool  # Corrected complement: greedy by marginal gain + Delta terms (requires equal probs)
     lazy_mixing_cuts_enabled::Bool           # Whether to use lazy_mixing inequalities
     lazy_mixing_cuts_violation_threshold::Float64  # Minimum violation for submitting lazy mixing cuts
     root_max_lazy_mixing_cuts_per_round::Int      # Maximum number of lazy mixing cuts to compute at root node per callback
@@ -218,7 +222,11 @@ function default_config()
         2,          # tree_user_frequency
 
         # Mixing cuts
-        :basic_star,  # mixing_inequality_type
+        # Mixing inequality types
+        true,    # mixing_basic_star_enabled
+        false,   # mixing_complement_enabled
+        false,   # mixing_improved_enabled
+        false,   # mixing_improved_complement_enabled
         false,   # lazy_mixing_cuts_enabled
         1e-3,    # lazy_mixing_cuts_violation_threshold
         1,      # root_max_lazy_mixing_cuts_per_round
@@ -456,10 +464,22 @@ function parse_commandline()
             default = default_config().tree_user_frequency
         
         # Mixing cuts settings
-        "--mixing-inequality-type"
-            help = "Type of mixing inequalities to use: basic_star, complement, or both"
-            arg_type = Symbol
-            default = default_config().mixing_inequality_type
+        "--mixing-basic-star-enabled"
+            help = "Enable basic_star mixing (original, greedy by max z)"
+            arg_type = Bool
+            default = default_config().mixing_basic_star_enabled
+        "--mixing-complement-enabled"
+            help = "Enable complement mixing (original with Delta terms, requires equal probs)"
+            arg_type = Bool
+            default = default_config().mixing_complement_enabled
+        "--mixing-improved-enabled"
+            help = "Enable improved mixing (corrected, greedy by marginal gain)"
+            arg_type = Bool
+            default = default_config().mixing_improved_enabled
+        "--mixing-improved-complement-enabled"
+            help = "Enable improved complement mixing (corrected with Delta terms, requires equal probs)"
+            arg_type = Bool
+            default = default_config().mixing_improved_complement_enabled
         "--lazy-mixing-cuts-enabled"
             help = "Enable mixing cuts"
             arg_type = Bool
@@ -704,7 +724,10 @@ function config_from_args(parsed_args::Dict{String, Any}, base_config::PPMPConfi
         parsed_args["tree-cut-freq"],
 
         # Mixing cuts
-        parsed_args["mixing-inequality-type"],
+        parsed_args["mixing-basic-star-enabled"],
+        parsed_args["mixing-complement-enabled"],
+        parsed_args["mixing-improved-enabled"],
+        parsed_args["mixing-improved-complement-enabled"],
         parsed_args["lazy-mixing-cuts-enabled"],
         parsed_args["lazy-mixing-cuts-violation-threshold"],
         parsed_args["root-max-lazy-mixing-cuts-per-round"],

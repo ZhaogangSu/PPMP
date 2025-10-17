@@ -76,22 +76,17 @@ function process_mixing_cuts_lazy!(cb_data, solver::FlowCutSolver, config::PPMPC
             # Find which scenario this cut is for
             k = cuts[cut_idx].k_idx
 
-            # Determine which mixing inequality type to use
-            mixing_type = config.mixing_inequality_type
-
             # Generate appropriate mixing inequality(ies)
             candidate_inequalities = []
-
-            # Check if complement mixing can be used (use cached value)
             can_use_complement = solver.has_equal_probs
 
-            if mixing_type == :basic_star || mixing_type == :both
+            # Generate basic_star if enabled
+            if config.mixing_basic_star_enabled
                 try
                     mixing_coeffs_basic, q_values_basic, constant_q_basic = generate_mixing_coefficients(
                         solver, k, cuts[cut_idx], z_val
                     )
 
-                    # Skip if trivial
                     if !is_trivial_mixing_inequality(mixing_coeffs_basic, cuts[cut_idx].coefficients,
                                                      constant_q_basic, solver.num_x, k)
                         val_vec = vcat(x_val, z_val)
@@ -108,23 +103,23 @@ function process_mixing_cuts_lazy!(cb_data, solver::FlowCutSolver, config::PPMPC
                         ))
 
                         if config.mixing_print_level >= 1
-                            println("Generated basic star inequality, violation: $(round(violation_basic, digits=6))")
+                            println("Generated basic_star inequality, violation: $(round(violation_basic, digits=6))")
                         end
                     end
                 catch e
                     if config.mixing_print_level >= 1
-                        println("Failed to generate basic star inequality: ", e)
+                        println("Failed to generate basic_star inequality: ", e)
                     end
                 end
             end
 
-            if (mixing_type == :complement || mixing_type == :both) && can_use_complement
+            # Generate complement if enabled and possible
+            if config.mixing_complement_enabled && can_use_complement
                 try
                     mixing_coeffs_comp, q_values_comp, constant_q_comp = generate_complement_mixing_inequality(
                         solver, k, cuts[cut_idx], z_val
                     )
 
-                    # Skip if trivial
                     if !is_trivial_mixing_inequality(mixing_coeffs_comp, cuts[cut_idx].coefficients,
                                                      constant_q_comp, solver.num_x, k)
                         val_vec = vcat(x_val, z_val)
@@ -149,9 +144,71 @@ function process_mixing_cuts_lazy!(cb_data, solver::FlowCutSolver, config::PPMPC
                         println("Failed to generate complement inequality: ", e)
                     end
                 end
-            elseif mixing_type == :complement && !can_use_complement
-                if config.mixing_print_level >= 1
-                    println("Complement mixing requested but probabilities not equal - skipping")
+            end
+
+            # Generate improved if enabled
+            if config.mixing_improved_enabled
+                try
+                    mixing_coeffs_improv, q_values_improv, constant_q_improv = generate_improved_mixing_coefficients(
+                        solver, k, cuts[cut_idx], z_val
+                    )
+
+                    if !is_trivial_mixing_inequality(mixing_coeffs_improv, cuts[cut_idx].coefficients,
+                                                     constant_q_improv, solver.num_x, k)
+                        val_vec = vcat(x_val, z_val)
+                        violation_improv = -sum(mixing_coeffs_improv .* val_vec) + constant_q_improv
+                        coeff_norm_improv = sqrt(sum(mixing_coeffs_improv.^2))
+
+                        push!(candidate_inequalities, (
+                            type = :improved,
+                            coefficients = mixing_coeffs_improv,
+                            constant = constant_q_improv,
+                            violation = violation_improv,
+                            norm = coeff_norm_improv,
+                            normalized_violation = violation_improv / coeff_norm_improv
+                        ))
+
+                        if config.mixing_print_level >= 1
+                            println("Generated improved inequality, violation: $(round(violation_improv, digits=6))")
+                        end
+                    end
+                catch e
+                    if config.mixing_print_level >= 1
+                        println("Failed to generate improved inequality: ", e)
+                    end
+                end
+            end
+
+            # Generate improved_complement if enabled and possible
+            if config.mixing_improved_complement_enabled && can_use_complement
+                try
+                    mixing_coeffs_improv_comp, q_values_improv_comp, constant_q_improv_comp = generate_improved_complement_mixing_coefficients(
+                        solver, k, cuts[cut_idx], z_val
+                    )
+
+                    if !is_trivial_mixing_inequality(mixing_coeffs_improv_comp, cuts[cut_idx].coefficients,
+                                                     constant_q_improv_comp, solver.num_x, k)
+                        val_vec = vcat(x_val, z_val)
+                        violation_improv_comp = -sum(mixing_coeffs_improv_comp .* val_vec) + constant_q_improv_comp
+                        coeff_norm_improv_comp = sqrt(sum(mixing_coeffs_improv_comp.^2))
+
+                        push!(candidate_inequalities, (
+                            type = :improved_complement,
+                            coefficients = mixing_coeffs_improv_comp,
+                            constant = constant_q_improv_comp,
+                            violation = violation_improv_comp,
+                            norm = coeff_norm_improv_comp,
+                            normalized_violation = violation_improv_comp / coeff_norm_improv_comp
+                        ))
+
+                        if config.mixing_print_level >= 1
+                            println("Generated improved_complement inequality, violation: $(round(violation_improv_comp, digits=6))")
+                        end
+                    end
+                catch e
+                    if config.mixing_print_level >= 1
+                        println("Failed to generate improved_complement inequality: ", e)
+                    end
                 end
             end
 
@@ -276,22 +333,17 @@ function process_mixing_cuts_user!(cb_data, solver::FlowCutSolver, config::PPMPC
             # Find which scenario this cut is for
             k = cuts[cut_idx].k_idx
 
-            # Determine which mixing inequality type to use
-            mixing_type = config.mixing_inequality_type
-
             # Generate appropriate mixing inequality(ies)
             candidate_inequalities = []
-
-            # Check if complement mixing can be used (use cached value)
             can_use_complement = solver.has_equal_probs
 
-            if mixing_type == :basic_star || mixing_type == :both
+            # Generate basic_star if enabled
+            if config.mixing_basic_star_enabled
                 try
                     mixing_coeffs_basic, q_values_basic, constant_q_basic = generate_mixing_coefficients(
                         solver, k, cuts[cut_idx], z_val
                     )
 
-                    # Skip if trivial
                     if !is_trivial_mixing_inequality(mixing_coeffs_basic, cuts[cut_idx].coefficients,
                                                      constant_q_basic, solver.num_x, k)
                         val_vec = vcat(x_val, z_val)
@@ -308,23 +360,23 @@ function process_mixing_cuts_user!(cb_data, solver::FlowCutSolver, config::PPMPC
                         ))
 
                         if config.mixing_print_level >= 1
-                            println("Generated basic star inequality, violation: $(round(violation_basic, digits=6))")
+                            println("Generated basic_star inequality, violation: $(round(violation_basic, digits=6))")
                         end
                     end
                 catch e
                     if config.mixing_print_level >= 1
-                        println("Failed to generate basic star inequality: ", e)
+                        println("Failed to generate basic_star inequality: ", e)
                     end
                 end
             end
 
-            if (mixing_type == :complement || mixing_type == :both) && can_use_complement
+            # Generate complement if enabled and possible
+            if config.mixing_complement_enabled && can_use_complement
                 try
                     mixing_coeffs_comp, q_values_comp, constant_q_comp = generate_complement_mixing_inequality(
                         solver, k, cuts[cut_idx], z_val
                     )
 
-                    # Skip if trivial
                     if !is_trivial_mixing_inequality(mixing_coeffs_comp, cuts[cut_idx].coefficients,
                                                      constant_q_comp, solver.num_x, k)
                         val_vec = vcat(x_val, z_val)
@@ -349,9 +401,71 @@ function process_mixing_cuts_user!(cb_data, solver::FlowCutSolver, config::PPMPC
                         println("Failed to generate complement inequality: ", e)
                     end
                 end
-            elseif mixing_type == :complement && !can_use_complement
-                if config.mixing_print_level >= 1
-                    println("Complement mixing requested but probabilities not equal - skipping")
+            end
+
+            # Generate improved if enabled
+            if config.mixing_improved_enabled
+                try
+                    mixing_coeffs_improv, q_values_improv, constant_q_improv = generate_improved_mixing_coefficients(
+                        solver, k, cuts[cut_idx], z_val
+                    )
+
+                    if !is_trivial_mixing_inequality(mixing_coeffs_improv, cuts[cut_idx].coefficients,
+                                                     constant_q_improv, solver.num_x, k)
+                        val_vec = vcat(x_val, z_val)
+                        violation_improv = -sum(mixing_coeffs_improv .* val_vec) + constant_q_improv
+                        coeff_norm_improv = sqrt(sum(mixing_coeffs_improv.^2))
+
+                        push!(candidate_inequalities, (
+                            type = :improved,
+                            coefficients = mixing_coeffs_improv,
+                            constant = constant_q_improv,
+                            violation = violation_improv,
+                            norm = coeff_norm_improv,
+                            normalized_violation = violation_improv / coeff_norm_improv
+                        ))
+
+                        if config.mixing_print_level >= 1
+                            println("Generated improved inequality, violation: $(round(violation_improv, digits=6))")
+                        end
+                    end
+                catch e
+                    if config.mixing_print_level >= 1
+                        println("Failed to generate improved inequality: ", e)
+                    end
+                end
+            end
+
+            # Generate improved_complement if enabled and possible
+            if config.mixing_improved_complement_enabled && can_use_complement
+                try
+                    mixing_coeffs_improv_comp, q_values_improv_comp, constant_q_improv_comp = generate_improved_complement_mixing_coefficients(
+                        solver, k, cuts[cut_idx], z_val
+                    )
+
+                    if !is_trivial_mixing_inequality(mixing_coeffs_improv_comp, cuts[cut_idx].coefficients,
+                                                     constant_q_improv_comp, solver.num_x, k)
+                        val_vec = vcat(x_val, z_val)
+                        violation_improv_comp = -sum(mixing_coeffs_improv_comp .* val_vec) + constant_q_improv_comp
+                        coeff_norm_improv_comp = sqrt(sum(mixing_coeffs_improv_comp.^2))
+
+                        push!(candidate_inequalities, (
+                            type = :improved_complement,
+                            coefficients = mixing_coeffs_improv_comp,
+                            constant = constant_q_improv_comp,
+                            violation = violation_improv_comp,
+                            norm = coeff_norm_improv_comp,
+                            normalized_violation = violation_improv_comp / coeff_norm_improv_comp
+                        ))
+
+                        if config.mixing_print_level >= 1
+                            println("Generated improved_complement inequality, violation: $(round(violation_improv_comp, digits=6))")
+                        end
+                    end
+                catch e
+                    if config.mixing_print_level >= 1
+                        println("Failed to generate improved_complement inequality: ", e)
+                    end
                 end
             end
 
