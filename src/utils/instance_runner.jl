@@ -268,12 +268,12 @@ function run_instance(solver_type::Type{<:PPMPSolver},
 
         # Apply presolve if configured
         if solver_type == FlowCutSolver && config.is_presolve_flowcut
-            instance, presolve_info = ppmp_presolve(instance)
+            instance, presolve_info = ppmp_presolve(instance, config)
             if presolve_info !== nothing
                 presolve_stats = presolve_info.stats
             end
         elseif solver_type == OriginalMIPSolver && config.is_presolve_original
-            instance, presolve_info = ppmp_presolve(instance)
+            instance, presolve_info = ppmp_presolve(instance, config)
             if presolve_info !== nothing
                 presolve_stats = presolve_info.stats
             end

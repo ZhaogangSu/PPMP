@@ -142,6 +142,81 @@ function print_presolve_results(instance::PPMPInstance,
 end
 
 """
+    find_conflict_constraints(instance, dominance_map, fixed_scenarios,
+                             subfixed_scenarios, max_group_size)
+
+Generate conflict constraints from dominance relationships.
+
+For scenarios k₁, k₂ where:
+- Neither individually satisfies P(D(kᵢ)) > ε (would be fixed)
+- But P(D(k₁) ∪ D(k₂)) > ε (collectively sufficient)
+
+Add constraint: z_k₁ + z_k₂ ≥ 1
+
+Returns vector of ConflictConstraint objects.
+"""
+function find_conflict_constraints(
+    instance::PPMPInstance,
+    dominance_map::Dict{Int,Set{Int}},
+    fixed_scenarios::Vector{Int},
+    subfixed_scenarios::Vector{Int},
+    max_group_size::Int
+)::Vector{ConflictConstraint}
+
+    # Validate max_group_size
+    if max_group_size != 2
+        @warn "max_conflict_group_size=$max_group_size not implemented, using 2"
+        max_group_size = 2
+    end
+
+    conflicts = ConflictConstraint[]
+    epsilon = instance.epsilon
+
+    # Skip scenarios already handled by individual preprocessing
+    skip_set = Set(vcat(fixed_scenarios, subfixed_scenarios))
+    candidate_scenarios = filter(k -> !(k in skip_set), 1:length(instance.scenarios))
+
+    # Only implement pairs (m=2)
+    if max_group_size >= 2
+        for i in 1:length(candidate_scenarios)-1
+            k1 = candidate_scenarios[i]
+
+            # Skip if k1 individually exceeds epsilon (would be fixed)
+            prob1 = sum(instance.probabilities[s] for s in dominance_map[k1])
+            if prob1 > epsilon + 1e-10
+                continue
+            end
+
+            for j in i+1:length(candidate_scenarios)
+                k2 = candidate_scenarios[j]
+
+                # Skip if k2 individually exceeds epsilon
+                prob2 = sum(instance.probabilities[s] for s in dominance_map[k2])
+                if prob2 > epsilon + 1e-10
+                    continue
+                end
+
+                # Early skip: even if disjoint, sum can't exceed epsilon
+                if prob1 + prob2 <= epsilon + 1e-10
+                    continue
+                end
+
+                # Compute union probability
+                union_dominated = union(dominance_map[k1], dominance_map[k2])
+                union_prob = sum(instance.probabilities[s] for s in union_dominated)
+
+                # Add conflict constraint if union exceeds epsilon
+                if union_prob > epsilon + 1e-10
+                    push!(conflicts, ConflictConstraint([k1, k2], union_prob))
+                end
+            end
+        end
+    end
+
+    return conflicts
+end
+
+"""
 Apply presolve reductions to PPMP instance
 Returns (reduced_instance, presolve_info)
 """
@@ -202,23 +277,23 @@ Returns (reduced_instance, presolve_info)
 #     return reduced_instance, presolve_info
 # end
 
-function ppmp_presolve(instance::PPMPInstance)
+function ppmp_presolve(instance::PPMPInstance, config::PPMPConfig)
 
     presolve_time_start = time()
-    
+
     # Build dominance relationships
     dominance_map = Dict{Int,Set{Int}}()
     for k in 1:length(instance.scenarios)
         dominance_map[k] = find_dominated_scenarios(instance, k)
     end
-    
+
     # Find ε-fixed and ε-subfixed scenarios
     fixed_scenarios = Int[]
     subfixed_scenarios = Int[]
-    
+
     for k in 1:length(instance.scenarios)
         dominated_prob = sum(instance.probabilities[i] for i in dominance_map[k])
-        
+
         if dominated_prob - instance.probabilities[k] > instance.epsilon + 1e-6
             # k is ε-subfixed
             push!(subfixed_scenarios, k)
@@ -227,20 +302,31 @@ function ppmp_presolve(instance::PPMPInstance)
             push!(fixed_scenarios, k)
         end
     end
-    
+
+    # Find conflict constraints
+    conflict_constraints = if config.is_presolve_conflict_cons
+        find_conflict_constraints(instance, dominance_map,
+                                 fixed_scenarios, subfixed_scenarios,
+                                 config.max_conflict_group_size)
+    else
+        ConflictConstraint[]
+    end
+
     # Calculate new epsilon
     new_epsilon = if isempty(subfixed_scenarios)
         instance.epsilon  # If no subfixed scenarios, keep original epsilon
-    else 
+    else
         instance.epsilon + sum(instance.probabilities[k] for k in subfixed_scenarios)
     end
-        
+
     # Create presolve statistics
     presolve_time = time() - presolve_time_start
-    presolve_stats = PresolveStats(presolve_time, instance, dominance_map, 
-                                 Set(fixed_scenarios), Set(subfixed_scenarios), new_epsilon)
-    
+    presolve_stats = PresolveStats(presolve_time, instance, dominance_map,
+                                 Set(fixed_scenarios), Set(subfixed_scenarios),
+                                 new_epsilon, conflict_constraints)
+
     # Return original instance with presolve info
-    return instance, PresolveInfo(fixed_scenarios, subfixed_scenarios, 
-                                dominance_map, new_epsilon, presolve_stats)
+    return instance, PresolveInfo(fixed_scenarios, subfixed_scenarios,
+                                dominance_map, new_epsilon, presolve_stats,
+                                conflict_constraints)
 end

@@ -78,6 +78,15 @@ struct MergeStats
 end
 
 """
+Represents a conflict constraint: at least one scenario from the group must be enforced.
+Used when scenarios collectively dominate enough probability to exceed epsilon.
+"""
+struct ConflictConstraint
+    scenarios::Vector{Int}           # Scenario indices that must have ≥1 enforced
+    union_dominated_prob::Float64    # P(D(k₁) ∪ D(k₂) ∪ ...)
+end
+
+"""
 Structure to hold statistics from presolve analysis
 """
 struct PresolveStats
@@ -103,10 +112,14 @@ struct PresolveStats
     max_dominance_prob::Float64     # Maximum probability dominated
     min_dominance_prob::Float64     # Minimum probability dominated
     avg_dominance_prob::Float64     # Average probability dominated
-    
+
     # New dominance count statistics
     max_dominating_scenario::Int    # The scenario that dominates the most others
     avg_dominated_count::Float64    # Average number of scenarios dominated per scenario
+
+    # Conflict constraint statistics
+    num_conflict_constraints::Int      # Number of conflict constraints generated
+    avg_conflict_union_prob::Float64   # Average union probability of conflicts
 end
 
 """
@@ -117,7 +130,8 @@ function PresolveStats(presolve_time::Float64,
                     dominance_map::Dict{Int,Set{Int}},
                     original_fixed::Set{Int},
                     removed_scenarios::Set{Int},
-                    new_epsilon::Float64)
+                    new_epsilon::Float64,
+                    conflict_constraints::Vector{ConflictConstraint})
 
     # Basic counts
     total_scenarios = length(instance.scenarios)
@@ -160,10 +174,16 @@ function PresolveStats(presolve_time::Float64,
                         maximum(length(dom_set) for dom_set in values(dominance_map))  # -1 to exclude self
 
     # Average number of dominated scenarios
-    avg_dominated_count = isempty(dominance_map) ? 0.0 : 
+    avg_dominated_count = isempty(dominance_map) ? 0.0 :
                         mean(length(dom_set) for dom_set in values(dominance_map))
+
+    # Compute conflict constraint statistics
+    num_conflicts = length(conflict_constraints)
+    avg_conflict_prob = isempty(conflict_constraints) ? 0.0 :
+                       sum(c.union_dominated_prob for c in conflict_constraints) / length(conflict_constraints)
+
     PresolveStats(
-        presolve_time, 
+        presolve_time,
         total_scenarios,
         num_removed,
         num_fixed,
@@ -180,7 +200,9 @@ function PresolveStats(presolve_time::Float64,
         min_dominance_prob,
         avg_dominance_prob,
         max_dominated_count,
-        avg_dominated_count   
+        avg_dominated_count,
+        num_conflicts,
+        avg_conflict_prob
     )
 end
 
@@ -196,9 +218,10 @@ Structure to hold presolve information
 #     stats::PresolveStats            # Statistical information about presolve
 # end
 struct PresolveInfo
-    fixed_scenarios::Vector{Int}     # Indices of epsilon-fixed scenarios 
+    fixed_scenarios::Vector{Int}     # Indices of epsilon-fixed scenarios
     subfixed_scenarios::Vector{Int}  # Indices of epsilon-subfixed scenarios (previously removed)
     dominance_map::Dict{Int,Set{Int}}
     new_epsilon::Float64
     stats::PresolveStats
+    conflict_constraints::Vector{ConflictConstraint}  # Conflict constraints from preprocessing
 end
