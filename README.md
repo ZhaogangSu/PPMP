@@ -63,7 +63,6 @@ In Julia REPL:
 using PPMP
 
 # Generate a standard test set
-generate_instances("grid")
 ```
 
 This will create instances in `data/grid/` with various sizes and parameters. For a quick test, we'll use a small instance:

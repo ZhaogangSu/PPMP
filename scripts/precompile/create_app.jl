@@ -6,7 +6,7 @@ create_app(
     ".", # path to  PPMP package
     # "bin";  # output directory
     # "bin_force";  # output directory
-    "bin_new2";  # output directory
+    "bin_new3";  # output directory
     # "bin";  # output directory
     force=true,  # overwrite existing files
     # incremental=false,  # create from scratch for smaller size

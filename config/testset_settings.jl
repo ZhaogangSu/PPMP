@@ -381,7 +381,7 @@ const DEV6_INSTANCE_SIZES = Dict(
 const DEV6_EDGE_DENSITIES = [0.5]
 const DEV6_FAILURE_PROBABILITIES = [0.005, 0.01]
 const DEV6_EPSILON_VALUES = [0.0, 0.01, 0.05, 0.1, 0.2]
-const DEV6_RANDOM_SEEDS = 1:5
+const DEV6_RANDOM_SEEDS = 1:10
 
 """semi-Uniform Data 2"""
 

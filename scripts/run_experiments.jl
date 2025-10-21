@@ -435,4 +435,22 @@ config_both = vcat(config_base, ["--mixing-inequality-type", "both"])
 submit_jobs("dev6", ["test*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], 
            "Mix_FCS_both_dev6", "bin_new2", 1, config_both)
 
+
+
+# Dev3
+
+# Setting -1: No Auto 
+config_1 = ["--auto-benders", "false", "--max-time", "7200"]
+submit_jobs("dev3", ["test*"], "OMS", [0.0, 0.01, 0.05, 0.1, 0.2], "Dev3_OMS_no_auto_ver5", "bin_new3", 20, config_1)
+
+
+# Setting 0: Auto
+config_2 = ["--max-time", "7200"]
+submit_jobs("dev3", ["test*"], "OMS", [0.0, 0.01, 0.05, 0.1, 0.2], "Dev3_OMS_ver5", "bin_new3", 10, config_2)
+
+# Setting 1: Default settings
+config_3 = ["--is-presolve-flowcut", "false", "--max-time", "7200", "--user-mixing-cuts-enabled", "false"]
+submit_jobs("dev3", ["test*"], "FCS", [0.0, 0.01, 0.05, 0.1, 0.2], "Dev3_FCS_ver5", "bin_new3", 10, config_3)
+
+
 """

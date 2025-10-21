@@ -223,7 +223,7 @@ function default_config()
 
         # Mixing cuts
         # Mixing inequality types
-        true,    # mixing_basic_star_enabled
+        false,    # mixing_basic_star_enabled
         false,   # mixing_complement_enabled
         false,   # mixing_improved_enabled
         false,   # mixing_improved_complement_enabled
@@ -231,11 +231,11 @@ function default_config()
         1e-3,    # lazy_mixing_cuts_violation_threshold
         1,      # root_max_lazy_mixing_cuts_per_round
         1,      # root_max_lazy_mixing_cuts_submit_per_round
-        0,      # tree_max_lazy_mixing_cuts_per_round
-        0,      # tree_max_lazy_mixing_cuts_submit_per_round
+        1,      # tree_max_lazy_mixing_cuts_per_round
+        1,      # tree_max_lazy_mixing_cuts_submit_per_round
 
         true,   # user_cuts_enabled
-        true,   # user_mixing_cuts_enabled
+        false,   # user_mixing_cuts_enabled
         1e-3,    # user_mixing_cuts_violation_threshold
         1e-1,    # user_mixing_cuts_normed_violation_rel_threshold
         5,      # root_max_user_mixing_cuts_per_round
