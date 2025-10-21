@@ -86,13 +86,28 @@ function FlowCutSolver(instance::PPMPInstance;
         for k in presolve_info.fixed_scenarios
             @constraint(model, z[k] == 1, base_name="fixed_z_$k")
         end
-        
+
         # Fix epsilon-subfixed scenarios (previously removed, now fixed to 1)
         for k in presolve_info.subfixed_scenarios
             @constraint(model, z[k] == 1, base_name="subfixed_z_$k")
         end
     end
-        
+
+    # Add conflict constraints from presolve
+    if config.is_presolve_conflict_cons && presolve_info !== nothing
+        num_conflicts = length(presolve_info.conflict_constraints)
+        if num_conflicts > 0
+            @info "Adding $num_conflicts conflict constraints from preprocessing..."
+            for (idx, conflict) in enumerate(presolve_info.conflict_constraints)
+                # println("Conflict $idx: scenarios = ", conflict.scenarios)  # Add this line
+                @constraint(model,
+                    sum(z[k] for k in conflict.scenarios) >= 1,
+                    base_name="conflict_$idx"
+                )
+            end
+        end
+    end
+
     if solve_rounds > 1 # Restart from stored cuts
         # Add stored lazy constraints if this is a restart
         if !isempty(stored_lazy_cons)
@@ -231,6 +246,8 @@ function FlowCutSolver(instance::PPMPInstance;
                 has_equal_probs ? "EQUAL (complement mixing available)" :
                                  "NON-EQUAL (complement mixing disabled)")
     end
+
+    # write_to_file(model, "model.lp")  # Write model to lp file
 
     @info "Creating FlowCutSolver object..."
     return FlowCutSolver(model, instance, x, z, length(instance.edges),

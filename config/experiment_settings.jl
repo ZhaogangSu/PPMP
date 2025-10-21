@@ -156,6 +156,10 @@ struct PPMPConfig
     is_presolve_fix_scenario::Bool     # Whether to fix scenario variables in modeling based on presolve info
     is_presolve_original::Bool     # Whether to use presolve
 
+    # Conflict constraint settings
+    is_presolve_conflict_cons::Bool     # Enable conflict constraints from dominance
+    max_conflict_group_size::Int        # Maximum scenarios per conflict constraint
+
     # Data loading
     merge_identical_scenarios::Bool  # Whether to merge identical scenarios when loading data
 
@@ -170,7 +174,7 @@ function default_config()
     PPMPConfig(
         # System
         1,        # threads
-        3600,    # max_time (4 hours)
+        7200,    # max_time (4 hours)
         0.0,     # mip_gap
         0.1,     # mip_gap_init
         10000000,      # max_node
@@ -282,6 +286,10 @@ function default_config()
         true,      # is_presolve_flowcut
         true,      # is_presolve_fix_scenario
         false,      # is_presolve_original
+
+        # Conflict constraint settings
+        false,     # is_presolve_conflict_cons (disabled by default)
+        2,         # max_conflict_group_size
 
         # Data loading
         true,      # merge_identical_scenarios
@@ -636,6 +644,15 @@ function parse_commandline()
             arg_type = Bool
             default = default_config().is_presolve_original
 
+        "--is-presolve-conflict-cons"
+            help = "Generate conflict constraints from dominance relationships"
+            arg_type = Bool
+            default = default_config().is_presolve_conflict_cons
+            "--max-conflict-group-size"
+            help = "Maximum group size for conflict constraints (only 2 supported)"
+            arg_type = Int
+            default = default_config().max_conflict_group_size
+
         "--merge-identical-scenarios"
             help = "Merge identical scenarios when loading data (false for Monte Carlo with equal probabilities)"
             arg_type = Bool
@@ -779,6 +796,10 @@ function config_from_args(parsed_args::Dict{String, Any}, base_config::PPMPConfi
         parsed_args["is-presolve-flowcut"],
         parsed_args["is-presolve-fix-scenario"],
         parsed_args["is-presolve-original"],
+
+        # Conflict constraint settings
+        parsed_args["is-presolve-conflict-cons"],
+        parsed_args["max-conflict-group-size"],
 
         # Data loading
         parsed_args["merge-identical-scenarios"],
